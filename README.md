@@ -4,6 +4,7 @@
 
 ```text
     discord-bot
+    ├── .env                   # Environment variables
     ├── main.py                # The main bot service that handles Discord events
     ├── responses.py           # The module that provides responses to user inputs
     ├── requirements.txt       # Project dependencies
