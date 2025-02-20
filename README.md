@@ -1,14 +1,14 @@
-# Discord Bot
+# Database Discord Bot
 
 This repository contains a Discord bot that interacts with users by responding to their messages. The bot uses a FastAPI service to manage chat responses stored in a database. The bot can handle both public and private messages and provides predefined responses based on user inputs.
 
 ## Project Structure
 
 ```text
-    discord-bot
+    database-discord-bot
     ├── .env                   # Environment variables
     ├── main.py                # The main bot service that handles Discord events
-    ├── responses.py           # The module that provides responses to user inputs
+    ├── responses.py           # The module that provides responses to user inputs using your custumized database
     ├── service.py             # The FastAPI service for managing chat responses
     ├── requirements.txt       # Project dependencies
     └── README.md              # Project documentation
@@ -18,8 +18,8 @@ This repository contains a Discord bot that interacts with users by responding t
 
 1. Clone the repository:
 ```sh
-    git clone https://github.com/DancingPumpkin65/discord-bot.git
-    cd discord-bot
+    git clone https://github.com/DancingPumpkin65/database-discord-bot.git
+    cd database-discord-bot
 ```
 
 2. Create and activate a virtual environment:
