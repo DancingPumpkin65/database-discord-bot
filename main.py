@@ -24,6 +24,17 @@ client: Client = Client(intents=Intents)
 # Track start time for uptime command
 start_time = time.time()
 
+# Available commands list for error handling
+COMMANDS = ['!ping', '!help', '!info']
+COMMAND_SUGGESTIONS = {
+    'ping': '!ping',
+    'help': '!help',
+    'info': '!info',
+    'hlp': '!help',
+    'nfo': '!info',
+    'pong': '!ping'
+}
+
 def get_uptime() -> str:
     """Calculate and format the bot's uptime"""
     uptime_seconds = int(time.time() - start_time)
@@ -41,6 +52,23 @@ def get_uptime() -> str:
     parts.append(f"{seconds}s")
     
     return " ".join(parts)
+
+# Function to get command suggestion
+def get_command_suggestion(cmd: str) -> str:
+    """Get a command suggestion based on user input"""
+    # Remove leading '!' if present
+    cleaned_cmd = cmd.lstrip('!')
+    
+    # Direct match in our suggestions dictionary
+    if cleaned_cmd in COMMAND_SUGGESTIONS:
+        return COMMAND_SUGGESTIONS[cleaned_cmd]
+    
+    # Check for similar commands (simple implementation)
+    for valid_cmd in COMMANDS:
+        if valid_cmd.lstrip('!') in cleaned_cmd or cleaned_cmd in valid_cmd.lstrip('!'):
+            return valid_cmd
+    
+    return None
 
 # Message event
 async def send_message(message: Message, user_message: str) -> None:
@@ -83,6 +111,19 @@ async def send_message(message: Message, user_message: str) -> None:
         embed.set_footer(text="Use !help to see available commands")
         
         await message.channel.send(embed=embed)
+        return
+    
+    # Error handling for command-like messages that don't match any command
+    elif user_message.startswith('!'):
+        command = user_message.split()[0].lower()
+        suggestion = get_command_suggestion(command)
+        
+        error_msg = f"Command `{command}` not found."
+        if suggestion:
+            error_msg += f" Did you mean `{suggestion}`?"
+        error_msg += " Type `!help` to see all available commands."
+        
+        await message.channel.send(error_msg)
         return
     
     if is_private := user_message[0] == '?':
@@ -148,11 +189,38 @@ async def on_message(message: Message) -> None:
         await send_message(message, user_message)
     except Exception as e:
         print(f"Error in on_message handler: {str(e)}")
+        error_embed = Embed(
+            title="Error", 
+            description="An error occurred while processing your message.", 
+            color=0xe74c3c
+        )
+        error_embed.add_field(name="What happened?", value="The bot encountered an unexpected issue.")
+        error_embed.add_field(name="What to do?", value="Please try again later or contact the bot administrator.")
+        error_embed.set_footer(text="Use !help to see available commands")
+        
+        try:
+            await message.channel.send(embed=error_embed)
+        except:
+            # If even sending the error embed fails, try a simple message
+            await message.channel.send("Sorry, an error occurred while processing your message.")
 
 # Additional error handling for Discord client
 @client.event
 async def on_error(event, *args, **kwargs):
-    print(f"Discord error in {event}: {str(args[0])}")
+    error = args[0] if args else "Unknown error"
+    print(f"Discord error in {event}: {str(error)}")
+    
+    # Try to send error details to a log channel if available
+    try:
+        if event == 'on_message' and ANNOUNCEMENT_CHANNEL_ID != 0:
+            log_channel = client.get_channel(ANNOUNCEMENT_CHANNEL_ID)
+            if log_channel:
+                embed = Embed(title="Bot Error", description=f"An error occurred in event: {event}", color=0xe74c3c)
+                embed.add_field(name="Error", value=str(error)[:1024])  # Truncate if too long
+                embed.add_field(name="Time", value=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                await log_channel.send(embed=embed)
+    except Exception as e:
+        print(f"Error in error handler: {str(e)}")
 
 # Main entry point
 def main() -> None:
@@ -166,6 +234,9 @@ def main() -> None:
             print("ERROR: DISCORD_TOKEN is not set in your .env file")
         elif "improper token" in str(e).lower():
             print("ERROR: Your Discord token appears to be invalid")
+        elif "privileged intent" in str(e).lower():
+            print("ERROR: You need to enable privileged intents in the Discord Developer Portal")
+            print("Visit: https://discord.com/developers/applications")
 
 if __name__ == '__main__': 
     main()
