@@ -2,8 +2,10 @@ from typing import Final
 import os
 import time
 import platform
+import datetime
 from dotenv import load_dotenv
 from discord import Intents, Client, Message, Embed, version_info as discord_version
+from discord.ext import tasks
 from responses import get_response
 
 # Load the environment variables
@@ -12,11 +14,33 @@ load_dotenv()
 TOKEN: Final[str] = os.getenv('DISCORD_TOKEN')
 BOT_VERSION: Final[str] = "1.0.0"
 BOT_CREATOR: Final[str] = "MAHITO"
+ANNOUNCEMENT_CHANNEL_ID: Final[int] = int(os.getenv('ANNOUNCEMENT_CHANNEL_ID', '0'))  # Set your default channel ID in .env
 
 # Set up the bot
 Intents: Intents = Intents.default()
 Intents.message_content = True
 client: Client = Client(intents=Intents)
+
+# Track start time for uptime command
+start_time = time.time()
+
+def get_uptime() -> str:
+    """Calculate and format the bot's uptime"""
+    uptime_seconds = int(time.time() - start_time)
+    days, remainder = divmod(uptime_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+    parts.append(f"{seconds}s")
+    
+    return " ".join(parts)
 
 # Message event
 async def send_message(message: Message, user_message: str) -> None:
@@ -71,31 +95,42 @@ async def send_message(message: Message, user_message: str) -> None:
         print(f"Error while processing message: {str(e)}")
         await message.channel.send("Sorry, I encountered an error while processing your request.")
 
-# Track start time for uptime command
-start_time = time.time()
-
-def get_uptime() -> str:
-    """Calculate and format the bot's uptime"""
-    uptime_seconds = int(time.time() - start_time)
-    days, remainder = divmod(uptime_seconds, 86400)
-    hours, remainder = divmod(remainder, 3600)
-    minutes, seconds = divmod(remainder, 60)
+# Define the daily scheduled task
+@tasks.loop(hours=24)
+async def daily_announcement():
+    if ANNOUNCEMENT_CHANNEL_ID == 0:
+        print("WARNING: No announcement channel ID set. Skipping daily announcement.")
+        return
     
-    parts = []
-    if days > 0:
-        parts.append(f"{days}d")
-    if hours > 0:
-        parts.append(f"{hours}h")
-    if minutes > 0:
-        parts.append(f"{minutes}m")
-    parts.append(f"{seconds}s")
-    
-    return " ".join(parts)
+    try:
+        channel = client.get_channel(ANNOUNCEMENT_CHANNEL_ID)
+        if channel:
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            embed = Embed(
+                title="Daily Announcement", 
+                description="This is an automated daily announcement.", 
+                color=0x9b59b6
+            )
+            embed.add_field(name="Current Date", value=current_time, inline=False)
+            embed.add_field(name="Bot Uptime", value=get_uptime(), inline=False)
+            embed.set_footer(text=f"Bot Version: {BOT_VERSION}")
+            
+            await channel.send(embed=embed)
+            print(f"Daily announcement sent at {current_time}")
+        else:
+            print(f"ERROR: Could not find channel with ID {ANNOUNCEMENT_CHANNEL_ID}")
+    except Exception as e:
+        print(f"ERROR: Failed to send daily announcement: {str(e)}")
 
 # Handling the startups for our bot
 @client.event
 async def on_ready() -> None:
     print(f'{client.user} has connected to Discord!')
+    
+    # Start the daily announcement task
+    if not daily_announcement.is_running():
+        daily_announcement.start()
+        print("Daily announcement task started.")
 
 # Handling incoming messages
 @client.event

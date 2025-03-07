@@ -39,6 +39,7 @@ This repository contains a Discord bot that interacts with users by responding t
 ```sh
     DISCORD_TOKEN=YOUR_DISCORD_TOKEN
     DATABASE_URL=YOUR_DATABASE_URL
+    ANNOUNCEMENT_CHANNEL_ID=YOUR_CHANNEL_ID
 ```
 
 ## Running the FastAPI Service
