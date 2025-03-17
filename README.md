@@ -10,6 +10,10 @@ This repository contains a Discord bot that interacts with users by responding t
     ├── main.py                # The main bot service that handles Discord events
     ├── responses.py           # The module that provides responses to user inputs using your custumized database
     ├── service.py             # The FastAPI service for managing chat responses
+    ├── welcome_card.py        # Module for generating beautiful welcome cards for new members
+    ├── config.py              # Configuration management for bot settings
+    ├── moderation.py          # Moderation tools and utilities
+    ├── custom_commands.py     # Custom command management system
     ├── requirements.txt       # Project dependencies
     └── README.md              # Project documentation
 ```
@@ -55,6 +59,22 @@ uvicorn service:app --host 0.0.0.0 --port 8001
 ```sh
 python main.py
 ```
+
+## Features
+
+### Welcome System
+The bot includes a sophisticated welcome system that:
+- Creates beautiful welcome cards for new members
+- Allows customization of welcome messages and channels
+- Sends helpful information to get new users started
+
+Commands:
+- `!welcome` - View current welcome settings
+- `!welcome toggle` - Enable/disable welcome messages
+- `!welcome message <text>` - Set custom welcome message
+- `!welcome channel <#channel>` - Set welcome channel
+- `!welcome test` - Preview the welcome message
+- `!welcome reset` - Reset to defaults
 
 ## License
 This project is licensed under the MIT License. See the `LICENSE` file for details.

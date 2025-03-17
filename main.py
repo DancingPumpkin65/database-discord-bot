@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 from discord import Intents, Client, Message, Embed, version_info as discord_version
 from discord.ext import tasks, commands
 from responses import get_response
+import discord
+from discord.file import File
+from welcome_card import create_welcome_card, create_welcome_embed
+from config import GuildConfig
 
 # Load the environment variables
 load_dotenv()
@@ -66,6 +70,9 @@ reminders = {}
 # Stats tracking
 message_counts = {}
 command_counts = {}
+
+# Initialize the guild config
+guild_config = GuildConfig()
 
 def get_uptime() -> str:
     """Calculate and format the bot's uptime"""
@@ -267,6 +274,12 @@ async def send_message(message: Message, user_message: str) -> None:
         await message.channel.send(embed=embed)
         return
     
+    elif user_message.lower().startswith('!welcome'):
+        # Process welcome command with arguments
+        args = user_message.split()[1:] if len(user_message.split()) > 1 else []
+        await handle_welcome_command(message, args)
+        return
+    
     # Error handling for command-like messages that don't match any command
     elif user_message.startswith('!'):
         command = user_message.split()[0].lower()
@@ -362,13 +375,59 @@ async def on_ready() -> None:
 @client.event
 async def on_member_join(member):
     try:
-        # Default welcome channel is the system channel if set
-        welcome_channel = member.guild.system_channel
+        # Get the welcome configuration for this guild
+        guild_id = str(member.guild.id)
+        welcome_enabled = guild_config.get(guild_id, "welcome_enabled")
         
-        if welcome_channel:
+        if not welcome_enabled:
+            return
+        
+        # Get the welcome channel (custom or system)
+        custom_channel_id = guild_config.get(guild_id, "welcome_channel")
+        if custom_channel_id:
+            welcome_channel = client.get_channel(int(custom_channel_id))
+        else:
+            welcome_channel = member.guild.system_channel
+        
+        if not welcome_channel:
+            return
+        
+        # Get custom welcome message if set
+        welcome_message = guild_config.get(guild_id, "welcome_message")
+        welcome_message = welcome_message.replace("{user}", member.display_name).replace("{server}", member.guild.name)
+        
+        # Get guild accent color (or use default)
+        accent_color = (46, 204, 113)  # Default green
+        
+        # Create and send the welcome card
+        card_image = await create_welcome_card(
+            username=member.display_name,
+            avatar_url=member.display_avatar.url,
+            server_name=member.guild.name,
+            member_count=len(member.guild.members),
+            custom_message=welcome_message,
+            accent_color=accent_color
+        )
+        
+        if card_image:
+            # Create welcome embed to accompany the image
+            embed = create_welcome_embed(
+                username=member.mention,
+                server_name=member.guild.name,
+                member_count=len(member.guild.members),
+                user_id=member.id
+            )
+            
+            # Send the welcome card with embed
+            await welcome_channel.send(
+                file=File(fp=card_image, filename="welcome.png"),
+                embed=embed
+            )
+        else:
+            # Fallback to basic embed if image creation fails
             embed = Embed(
                 title=f"Welcome to {member.guild.name}!",
-                description=f"Hello {member.mention}! Welcome to our server!",
+                description=f"Hello {member.mention}! {welcome_message}",
                 color=0x2ecc71
             )
             embed.set_thumbnail(url=member.display_avatar.url)
@@ -378,6 +437,118 @@ async def on_member_join(member):
             await welcome_channel.send(embed=embed)
     except Exception as e:
         print(f"Error in welcome message: {str(e)}")
+
+# Update the !welcome command to configure welcome settings
+async def handle_welcome_command(message, args):
+    """Handle welcome command and its subcommands"""
+    if not message.guild:
+        await message.channel.send("This command can only be used in a server.")
+        return
+        
+    if not message.author.guild_permissions.administrator:
+        await message.channel.send("You need administrator permissions to use this command.")
+        return
+    
+    guild_id = str(message.guild.id)
+    
+    # No arguments - show current settings
+    if not args:
+        welcome_enabled = guild_config.get(guild_id, "welcome_enabled")
+        welcome_message = guild_config.get(guild_id, "welcome_message")
+        custom_channel_id = guild_config.get(guild_id, "welcome_channel")
+        
+        status = "enabled" if welcome_enabled else "disabled"
+        channel_text = f"<#{custom_channel_id}>" if custom_channel_id else "Default system channel"
+        
+        embed = Embed(title="Welcome Message Configuration", color=0x2ecc71)
+        embed.add_field(name="Status", value=status.capitalize(), inline=True)
+        embed.add_field(name="Channel", value=channel_text, inline=True)
+        embed.add_field(name="Current Message", value=welcome_message, inline=False)
+        
+        embed.add_field(
+            name="Commands", 
+            value=(
+                "`!welcome toggle` - Enable/disable welcome messages\n"
+                "`!welcome message <text>` - Set custom welcome message\n"
+                "`!welcome channel <#channel>` - Set welcome channel\n"
+                "`!welcome test` - Test current welcome message\n"
+                "`!welcome reset` - Reset to defaults"
+            ),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Variables", 
+            value=(
+                "{user} - The username\n"
+                "{server} - The server name"
+            ),
+            inline=False
+        )
+        
+        await message.channel.send(embed=embed)
+        return
+    
+    # Handle subcommands
+    subcommand = args[0].lower()
+    
+    if subcommand == "toggle":
+        current = guild_config.get(guild_id, "welcome_enabled")
+        guild_config.set(guild_id, "welcome_enabled", not current)
+        new_status = "enabled" if not current else "disabled"
+        await message.channel.send(f"✅ Welcome messages are now {new_status}.")
+        
+    elif subcommand == "message" and len(args) > 1:
+        new_message = " ".join(args[1:])
+        guild_config.set(guild_id, "welcome_message", new_message)
+        await message.channel.send(f"✅ Welcome message updated!")
+        
+    elif subcommand == "channel":
+        if not message.channel_mentions:
+            await message.channel.send("Please mention a channel: `!welcome channel #channel`")
+            return
+            
+        channel = message.channel_mentions[0]
+        guild_config.set(guild_id, "welcome_channel", str(channel.id))
+        await message.channel.send(f"✅ Welcome channel set to {channel.mention}")
+        
+    elif subcommand == "test":
+        # Simulate welcome message for the command user
+        welcome_message = guild_config.get(guild_id, "welcome_message")
+        welcome_message = welcome_message.replace("{user}", message.author.display_name).replace("{server}", message.guild.name)
+        
+        card_image = await create_welcome_card(
+            username=message.author.display_name,
+            avatar_url=message.author.display_avatar.url,
+            server_name=message.guild.name,
+            member_count=len(message.guild.members),
+            custom_message=welcome_message
+        )
+        
+        if card_image:
+            embed = create_welcome_embed(
+                username=message.author.mention,
+                server_name=message.guild.name,
+                member_count=len(message.guild.members),
+                user_id=message.author.id
+            )
+            
+            await message.channel.send(
+                content="**Welcome Card Preview:**",
+                file=File(fp=card_image, filename="welcome_preview.png"),
+                embed=embed
+            )
+        else:
+            await message.channel.send("Failed to generate welcome card preview.")
+            
+    elif subcommand == "reset":
+        guild_config.reset(guild_id, "welcome_enabled")
+        guild_config.reset(guild_id, "welcome_message")
+        guild_config.reset(guild_id, "welcome_channel")
+        await message.channel.send("✅ Welcome settings have been reset to defaults.")
+        
+    else:
+        await message.channel.send("Unknown subcommand. Type `!welcome` to see available options.")
 
 # Handling incoming messages
 @client.event
