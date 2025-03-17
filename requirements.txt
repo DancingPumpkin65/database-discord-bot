@@ -1,4 +1,4 @@
-discord
+discord.py>=2.0.0
 python-dotenv
 pymysql
 fastapi
@@ -6,3 +6,6 @@ uvicorn
 httpx
 sqlalchemy
 openai
+Pillow
+aiosqlite
+pydantic
